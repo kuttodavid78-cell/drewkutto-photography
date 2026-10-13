@@ -9,6 +9,7 @@ const orderRoutes = require('./routes/orderRoutes');
 const mpesaRoutes = require('./routes/mpesaRoutes');
 const contentRoutes = require('./routes/contentRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const upload = require('./middleware/upload');
 
 const app = express();
 
@@ -22,7 +23,8 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Serve uploaded images (hero photos, gallery images, print photos)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// (filenames are unique, so browsers can safely cache them for a long time)
+app.use('/uploads', express.static(upload.UPLOAD_DIR, { maxAge: '30d', immutable: true }));
 
 // ── API ROUTES ──
 app.use('/api/auth', authRoutes);
@@ -61,6 +63,9 @@ if (process.env.NODE_ENV === 'production') {
 // ── 404 + ERROR HANDLING ──
 app.use('/api', (req, res) => res.status(404).json({ success: false, message: 'Not found.' }));
 
+// Friendly messages for upload problems (file too large, too many files, wrong type)
+app.use(upload.errorHandler);
+
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   const status = err.statusCode || err.status || 500;
@@ -70,7 +75,7 @@ app.use((err, req, res, next) => {
 // IMPORTANT: wait for MongoDB to actually connect before accepting requests.
 const PORT = process.env.PORT || 5000;
 connectDB().then(() => {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Drew Kutto Photography backend running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     if (process.env.NODE_ENV !== 'production') {
@@ -79,6 +84,10 @@ connectDB().then(() => {
       console.log(`Customer site: open frontend/index.html in browser`);
     }
   });
+  // Large photos on slow connections can take several minutes to upload.
+  // Node's default 5-minute request timeout would cut those off, so allow 30.
+  server.requestTimeout = 30 * 60 * 1000;
+  server.headersTimeout = 60 * 1000;
 }).catch(err => {
   console.error('Failed to start server:', err.message);
   process.exit(1);

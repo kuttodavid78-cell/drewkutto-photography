@@ -76,6 +76,17 @@ cp .env.example .env
 npm run seed:admin
 ```
 This creates the admin user from `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `.env`.
+If that admin already exists, running it again **resets the password**.
+
+You can also pass the login directly, without keeping the password in `.env`:
+
+```bash
+npm run seed:admin -- drewkutto drewkutto2025
+```
+
+Current admin login: username `drewkutto`, password `drewkutto2025`. Change the password
+after first login (Settings → Change Admin Password). Every password box in the admin
+panel has an eye button to show/hide what you type.
 
 ### 4. Start the backend
 
@@ -129,6 +140,39 @@ Use `254708374149` or `254712345678` for sandbox STK push tests.
 
 ---
 
+## Photo uploads (admin panel)
+
+- Accepts JPG, PNG, WebP, GIF, AVIF and **HEIC/HEIF (iPhone photos)**. HEIC files are
+  converted automatically to high-quality JPG on upload so every browser can show them.
+- Defaults: **100 MB per image, 40 images per upload** (hero: 5). Change with
+  `MAX_UPLOAD_MB` and `MAX_UPLOAD_FILES` in `.env`.
+- A progress bar shows while photos upload.
+- Removing an image (or deleting a style, album or print) in the admin panel also deletes
+  the file from the server, so disk space is freed.
+- **Storage location:** by default photos are saved in `backend/uploads`. On hosts such as
+  Render, Railway or Fly.io that folder is wiped on every restart/redeploy unless you attach
+  a persistent disk. Mount one and set `UPLOAD_DIR` in your host's environment settings
+  (for example `UPLOAD_DIR=/var/data/uploads`).
+- **After updating, run `npm install` inside `backend/`** (once — installs the HEIC
+  converter), then restart the server.
+- Camera RAW files (CR2, NEF, ARW, DNG) and TIFF are not supported — export them as JPG first.
+
+## Keeping secrets out of Git
+
+`.gitignore` keeps `backend/.env` and `node_modules/` out of the repository. If they were
+committed before, stop tracking them (this keeps the files on your computer):
+
+```bash
+git rm -r --cached backend/.env backend/node_modules
+git add .gitignore
+git commit -m "Stop tracking secrets and node_modules"
+git push
+```
+
+Anything that was ever committed stays in Git history, so rotate those secrets (database
+password, `JWT_SECRET`, M-Pesa keys) if the repository is, or ever was, public.
+Set the same values in your host's *Environment Variables* settings instead of a committed `.env`.
+
 ## Production Deployment
 
 ### Environment changes for live
@@ -171,6 +215,11 @@ Nginx reverse proxy example:
 ```nginx
 server {
     server_name drewkuttophotography.com;
+    # IMPORTANT: Nginx rejects uploads over 1 MB by default. Without these lines,
+    # admin photo uploads fail even for small files.
+    client_max_body_size 200M;
+    proxy_read_timeout 1800s;
+    proxy_send_timeout 1800s;
     location / { proxy_pass http://localhost:5000; }
 }
 ```

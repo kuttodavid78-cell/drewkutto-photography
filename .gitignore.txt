@@ -1,4 +1,0 @@
-.env
-db/data.json
-node_modules/
-*.log

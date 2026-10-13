@@ -2,6 +2,7 @@ const PhotoStyle = require('../models/PhotoStyle');
 const Print = require('../models/Print');
 const Album = require('../models/Album');
 const Settings = require('../models/Settings');
+const upload = require('../middleware/upload'); // upload.removeUploads() frees disk space
 
 // ── PHOTO STYLES ──
 async function getStyles(req, res) {
@@ -34,7 +35,8 @@ async function updateStyle(req, res) {
 }
 async function deleteStyle(req, res) {
   try {
-    await PhotoStyle.findByIdAndDelete(req.params.id);
+    const deleted = await PhotoStyle.findByIdAndDelete(req.params.id);
+    if (deleted) await upload.removeUploads(deleted.images);
     res.json({ success: true });
   } catch (err) {
     console.error('deleteStyle error:', err);
@@ -58,8 +60,10 @@ async function removeStyleImage(req, res) {
   try {
     const style = await PhotoStyle.findById(req.params.id);
     if (!style) return res.status(404).json({ success: false, message: 'Style not found.' });
+    const removedUrl = style.images[Number(req.params.imgIndex)];
     style.images = style.images.filter((_, i) => i !== Number(req.params.imgIndex));
     await style.save();
+    await upload.removeUploads(removedUrl);
     res.json({ success: true, style });
   } catch (err) {
     console.error('removeStyleImage error:', err);
@@ -94,8 +98,10 @@ async function updatePrint(req, res) {
     const body = { ...req.body };
     if (req.file) body.image = `/uploads/${req.file.filename}`;
     if (typeof body.soldOut === 'string') body.soldOut = body.soldOut === 'true';
+    const before = req.file ? await Print.findById(req.params.id) : null;
     const print = await Print.findByIdAndUpdate(req.params.id, body, { new: true });
     if (!print) return res.status(404).json({ success: false, message: 'Print not found.' });
+    if (before && before.image && before.image !== print.image) await upload.removeUploads(before.image);
     res.json({ success: true, print });
   } catch (err) {
     console.error('updatePrint error:', err);
@@ -104,7 +110,8 @@ async function updatePrint(req, res) {
 }
 async function deletePrint(req, res) {
   try {
-    await Print.findByIdAndDelete(req.params.id);
+    const deleted = await Print.findByIdAndDelete(req.params.id);
+    if (deleted) await upload.removeUploads(deleted.image);
     res.json({ success: true });
   } catch (err) {
     console.error('deletePrint error:', err);
@@ -143,7 +150,8 @@ async function updateAlbum(req, res) {
 }
 async function deleteAlbum(req, res) {
   try {
-    await Album.findByIdAndDelete(req.params.id);
+    const deleted = await Album.findByIdAndDelete(req.params.id);
+    if (deleted) await upload.removeUploads(deleted.images);
     res.json({ success: true });
   } catch (err) {
     console.error('deleteAlbum error:', err);
@@ -167,8 +175,10 @@ async function removeAlbumImage(req, res) {
   try {
     const album = await Album.findById(req.params.id);
     if (!album) return res.status(404).json({ success: false, message: 'Album not found.' });
+    const removedUrl = album.images[Number(req.params.imgIndex)];
     album.images = album.images.filter((_, i) => i !== Number(req.params.imgIndex));
     await album.save();
+    await upload.removeUploads(removedUrl);
     res.json({ success: true, album });
   } catch (err) {
     console.error('removeAlbumImage error:', err);
@@ -190,8 +200,13 @@ async function setHeroImages(req, res) {
   try {
     const settings = await Settings.getSingleton();
     const urls = (req.files || []).map(f => `/uploads/${f.filename}`);
+    const oldHero = settings.heroImages.slice();
     settings.heroImages = urls.length ? urls.slice(0, 5) : settings.heroImages;
     await settings.save();
+    if (urls.length) {
+      // New hero set replaces the old one: delete the old files, plus any extras beyond 5
+      await upload.removeUploads([...oldHero, ...urls.slice(5)]);
+    }
     res.json({ success: true, heroImages: settings.heroImages });
   } catch (err) {
     console.error('setHeroImages error:', err);
@@ -201,8 +216,10 @@ async function setHeroImages(req, res) {
 async function removeHeroImage(req, res) {
   try {
     const settings = await Settings.getSingleton();
+    const removedUrl = settings.heroImages[Number(req.params.imgIndex)];
     settings.heroImages = settings.heroImages.filter((_, i) => i !== Number(req.params.imgIndex));
     await settings.save();
+    await upload.removeUploads(removedUrl);
     res.json({ success: true, heroImages: settings.heroImages });
   } catch (err) {
     console.error('removeHeroImage error:', err);

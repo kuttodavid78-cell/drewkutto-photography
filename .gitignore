@@ -1,0 +1,14 @@
+# Secrets & local config — never commit these
+.env
+backend/.env
+
+# Dependencies (installed with `npm install`)
+node_modules/
+
+# Logs / local data
+*.log
+db/data.json
+
+# Photos uploaded through the admin panel (keep the folder itself)
+backend/uploads/*
+!backend/uploads/.gitkeep
